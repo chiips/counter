@@ -3,9 +3,9 @@ package counters
 var counterStore []*CounterFull
 
 //GetCounterStore gets from our store
-func GetCounterStore() []*CounterFull {
+func GetCounterStore() ([]*CounterFull, error) {
 
-	return counterStore
+	return counterStore, nil
 
 }
 

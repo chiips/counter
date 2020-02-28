@@ -74,16 +74,54 @@ func processClick(data string) error {
 
 func statsHandler(w http.ResponseWriter, r *http.Request) {
 
-	counterList := counters.GetCounterStore()
+	ctx := r.Context()
+	resultCh := make(chan []*counters.CounterFull)
+	errCh := make(chan error)
 
-	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(counterList)
-	if err != nil {
+	go func() {
+
+		//check if context cancelled before time to talk to store
+		if ctx.Err() != nil {
+			return
+		}
+
+		counterList, err := counters.GetCounterStore()
+
+		//check if context cancelled by the time done talking to DB
+		if ctx.Err() != nil {
+			return
+		}
+
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		resultCh <- counterList
+		return
+
+	}()
+
+	select {
+	case <-ctx.Done():
+		log.Println(ctx.Err())
+		http.Error(w, "We could not process your request at this time. Please try again later.", http.StatusRequestTimeout)
+		return
+	case err := <-errCh:
 		log.Println(err)
 		http.Error(w, http.StatusText(500), http.StatusInternalServerError)
 		return
+	case stats := <-resultCh:
+		w.Header().Set("Content-Type", "application/json")
+		err := json.NewEncoder(w).Encode(stats)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, http.StatusText(500), http.StatusInternalServerError)
+			return
+		}
+		return
 	}
-	return
+
 }
 
 func uploadCounters(tick int) error {
